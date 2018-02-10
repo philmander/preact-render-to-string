@@ -1,3 +1,5 @@
+import { Readable } from 'stream';
+import 'regenerator-runtime/runtime';
 import { objectKeys, encodeEntities, falsey, memoize, indent, isLargeString, styleObjToCss, hashToClassName, assign, getNodeProps } from './util';
 
 const SHALLOW = { shallow: true };
@@ -38,7 +40,7 @@ const VOID_ELEMENTS = [
 renderToString.render = renderToString;
 
 
-/** Only render elements, leaving Components inline as `<ComponentName ... />`.
+/** Only render elements, leaving Components inline as `<ComponentNgame ... />`.
  *	This method is just a convenience alias for `render(vnode, context, { shallow:true })`
  *	@name shallow
  *	@function
@@ -47,9 +49,7 @@ renderToString.render = renderToString;
  */
 let shallowRender = (vnode, context) => renderToString(vnode, context, SHALLOW);
 
-
-/** The default export is an alias of `render()`. */
-export default function renderToString(vnode, context, opts, inner, isSvgMode) {
+function* generateString(vnode, context, opts, inner, isSvgMode) {
 	let { nodeName, attributes, children } = vnode || EMPTY,
 		isComponent = false;
 	context = context || {};
@@ -59,15 +59,15 @@ export default function renderToString(vnode, context, opts, inner, isSvgMode) {
 		indentChar = typeof pretty==='string' ? pretty : '\t';
 
 	if (vnode==null || typeof vnode==='boolean') {
-		return '';
+		return yield '';
 	}
 
-	// #text nodes
+    // #text nodes
 	if (typeof vnode!=='object' && !nodeName) {
-		return encodeEntities(vnode);
+		return yield encodeEntities(vnode);
 	}
 
-	// components
+    // components
 	if (typeof nodeName==='function') {
 		isComponent = true;
 		if (opts.shallow && (inner || opts.renderRootComponent===false)) {
@@ -78,13 +78,13 @@ export default function renderToString(vnode, context, opts, inner, isSvgMode) {
 				rendered;
 
 			if (!nodeName.prototype || typeof nodeName.prototype.render!=='function') {
-				// stateless functional components
+                // stateless functional components
 				rendered = nodeName(props, context);
 			}
 			else {
-				// class-based components
+                // class-based components
 				let c = new nodeName(props, context);
-				// turn off stateful re-rendering:
+                // turn off stateful re-rendering:
 				c._disable = c.__x = true;
 				c.props = props;
 				c.context = context;
@@ -96,17 +96,17 @@ export default function renderToString(vnode, context, opts, inner, isSvgMode) {
 				}
 			}
 
-			return renderToString(rendered, context, opts, opts.shallowHighOrder!==false);
+			return yield *generateString(rendered, context, opts, opts.shallowHighOrder!==false);
 		}
 	}
 
-	// render JSX to HTML
+    // render JSX to HTML
 	let s = '', html;
 
 	if (attributes) {
 		let attrs = objectKeys(attributes);
 
-		// allow sorting lexicographically for more determinism (useful for tests, such as via preact-jsx-chai)
+        // allow sorting lexicographically for more determinism (useful for tests, such as via preact-jsx-chai)
 		if (opts && opts.sortAttributes===true) attrs.sort();
 
 		for (let i=0; i<attrs.length; i++) {
@@ -142,7 +142,7 @@ export default function renderToString(vnode, context, opts, inner, isSvgMode) {
 			else if ((v || v===0 || v==='') && typeof v!=='function') {
 				if (v===true || v==='') {
 					v = name;
-					// in non-xml mode, allow boolean attributes
+                    // in non-xml mode, allow boolean attributes
 					if (!opts || !opts.xml) {
 						s += ' ' + name;
 						continue;
@@ -153,7 +153,7 @@ export default function renderToString(vnode, context, opts, inner, isSvgMode) {
 		}
 	}
 
-	// account for >1 multiline attribute
+    // account for >1 multiline attribute
 	let sub = s.replace(/^\n\s*/, ' ');
 	if (sub!==s && !~sub.indexOf('\n')) s = sub;
 	else if (pretty && ~s.indexOf('\n')) s += '\n';
@@ -163,13 +163,14 @@ export default function renderToString(vnode, context, opts, inner, isSvgMode) {
 	if (VOID_ELEMENTS.indexOf(nodeName)>-1) {
 		s = s.replace(/>$/, ' />');
 	}
+	yield s;
 
 	if (html) {
-		// if multiline, indent.
+        // if multiline, indent.
 		if (pretty && isLargeString(html)) {
 			html = '\n' + indentChar + indent(html, indentChar);
 		}
-		s += html;
+		yield html;
 	}
 	else {
 		let len = children && children.length,
@@ -179,7 +180,7 @@ export default function renderToString(vnode, context, opts, inner, isSvgMode) {
 			let child = children[i];
 			if (!falsey(child)) {
 				let childSvgMode = nodeName==='svg' ? true : nodeName==='foreignObject' ? false : isSvgMode,
-					ret = renderToString(child, context, opts, true, childSvgMode);
+					ret = yield* renderToString(child, context, opts, true, childSvgMode);
 				if (!hasLarge && pretty && isLargeString(ret)) hasLarge = true;
 				if (ret) pieces.push(ret);
 			}
@@ -190,19 +191,18 @@ export default function renderToString(vnode, context, opts, inner, isSvgMode) {
 			}
 		}
 		if (pieces.length) {
-			s += pieces.join('');
+			yield pieces.join('');
 		}
 		else if (opts && opts.xml) {
-			return s.substring(0, s.length-1) + ' />';
+			// TODO: any way to support self-closing tags?
+			// return yield s.substring(0, s.length-1) + ' />';
 		}
 	}
 
 	if (VOID_ELEMENTS.indexOf(nodeName)===-1) {
-		if (pretty && ~s.indexOf('\n')) s += '\n';
-		s += `</${nodeName}>`;
+		s = pretty && ~s.indexOf('\n') ? '\n' : '';
+		yield s + `</${nodeName}>`;
 	}
-
-	return s;
 }
 
 function getComponentName(component) {
@@ -231,9 +231,31 @@ function getFallbackComponentName(component) {
 }
 renderToString.shallowRender = shallowRender;
 
+function renderToStream(vnode, context, opts, inner, isSvgMode) {
+	const stream = new Readable();
+	const iter = generateString(vnode, context, opts, inner, isSvgMode);
+	let next;
+	stream._read = function() {
+		next = iter.next();
+		this.push(!next.done ? next.value : null);
+	};
+	return stream;
+}
+
+/** The default export is an alias of `render()`. */
+export default function renderToString(vnode, context, opts, inner, isSvgMode) {
+	let s = '', iter = generateString(vnode, context, opts, inner, isSvgMode);
+
+	for (let next of iter) {
+		s += next;
+	}
+
+	return s;
+}
 
 export {
-	renderToString as render,
-	renderToString,
-	shallowRender
+    renderToString as render,
+    renderToString,
+	renderToStream,
+    shallowRender
 };

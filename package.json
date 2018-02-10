@@ -10,7 +10,7 @@
     "copy-typescript-definition": "copyfiles -f src/index.d.ts dist",
     "transpile": "rollup -c rollup.config.js -m ${npm_package_main}.map -f umd -n $npm_package_amdName $npm_package_jsnext_main -o $npm_package_main",
     "transpile:jsx": "ENTRY=jsx rollup -c rollup.config.js -m dist/jsx.js.map -f umd -n $npm_package_amdName src/jsx.js -o dist/jsx.js",
-    "test": "eslint src test && mocha --compilers js:babel-register test/**/*.js",
+    "test": "eslint src test --fix && mocha --compilers js:babel-register test/**/*.js --require babel-polyfill",
     "prepublish": "npm run build",
     "release": "npm run build && git commit -am $npm_package_version && git tag $npm_package_version && git push && git push --tags && npm publish"
   },
