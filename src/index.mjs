@@ -1,6 +1,7 @@
-import { Readable } from 'stream';
+import stream from 'stream';
 import 'regenerator-runtime/runtime';
 import { objectKeys, encodeEntities, falsey, memoize, indent, isLargeString, styleObjToCss, hashToClassName, assign, getNodeProps } from './util';
+const { Readable } = stream;
 
 const SHALLOW = { shallow: true };
 

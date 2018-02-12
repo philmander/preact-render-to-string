@@ -50,7 +50,7 @@ new Benchmark.Suite()
     .add('renderToStringOriginal', function() {
         renderToStringOriginal(PreactApp(items));
     })
-    .on('complete', () => {
+    .on('complete', function () {
         this.forEach(r => console.log(r.toString()));
     })
     // run async
